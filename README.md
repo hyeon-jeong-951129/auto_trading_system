@@ -80,7 +80,7 @@ PYTHONPATH=. python main.py --telegram --universe 40 --top 12 --no-news
 
 1. **Secrets:** 저장소 **Settings → Secrets and variables → Actions** 에 `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` 추가.
 
-2. **워크플로 파일 위치:** 레포 안에 [`scripts/github-actions/daily-telegram.yml`](scripts/github-actions/daily-telegram.yml) 를 두었습니다. GitHub 웹에서 **Add file → Create new file** 로 경로를 **`/.github/workflows/daily-telegram.yml`** 로 지정한 뒤, 그 파일 **내용 전체를 복사해 붙여 넣고 Commit** 하세요. (로컬 `git push`에 **workflow** 권한이 없으면 `.github/workflows/` 푸시가 거절되는 경우가 있어, 웹에서 만드는 방식이 안전합니다.)
+2. **워크플로:** 레포에 [`.github/workflows/daily-telegram.yml`](.github/workflows/daily-telegram.yml) 가 포함되어 있습니다. `git push` 시 **Personal Access Token에 `workflow` 범위**가 있어야 합니다. 없으면 [토큰 설정](https://github.com/settings/tokens)에서 켠 뒤 다시 푸시하거나, 예전처럼 GitHub 웹에서 동일 경로로 파일을 만들면 됩니다.
 
 3. **테스트:** **Actions** 탭 → **Telegram daily screener** → **Run workflow** → Run. 성공하면 텔레그램으로 요약이 옵니다.
 
