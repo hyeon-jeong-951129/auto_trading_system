@@ -42,20 +42,37 @@ PYTHONPATH=. python main.py --universe 60 --flow-days 5 --top 15
 
 ### 1) 봇·채팅 ID
 
-1. 텔레그램에서 [@BotFather](https://t.me/BotFather)로 봇을 만들고 **토큰**을 받습니다.  
-2. 봇과 대화를 한 번 시작한 뒤, [@userinfobot](https://t.me/userinfobot) 등으로 **본인 `chat_id`**를 확인합니다.  
-3. 프로젝트 루트에 `.env` 생성 (`.env.example` 참고):
+1. 텔레그램에서 [@BotFather](https://t.me/BotFather)에 `/newbot` 으로 봇을 만들고 **HTTP API 토큰**을 복사합니다.  
+2. **본인 텔레그램 앱에서 방금 만든 봇을 검색해 `/start` 또는 아무 말이나 보냅니다.** (이걸 안 하면 봇이 나에게 메시지를 못 보낼 수 있습니다.)  
+3. [@userinfobot](https://t.me/userinfobot) 에 `/start` 하면 **숫자 `Id:`** 가 나옵니다. 그게 **`TELEGRAM_CHAT_ID`** 입니다.  
+4. 프로젝트 폴더에서:
 
    ```bash
-   TELEGRAM_BOT_TOKEN=...
-   TELEGRAM_CHAT_ID=...
+   cd ~/stock-recommendation-system   # 클론한 경로에 맞게
+   cp .env.example .env
    ```
+
+   `.env` 를 열어 `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` 만 본인 값으로 바꿉니다. (따옴표 없이)
 
 ### 2) 로컬에서 테스트
 
+**가벼운 연결 테스트 (스크리너 실행 없음):**
+
 ```bash
-PYTHONPATH=. python main.py --telegram --universe 40 --top 12
+cd ~/stock-recommendation-system
+source .venv/bin/activate
+PYTHONPATH=. python main.py --telegram-test
 ```
+
+텔레그램 앱에 `🔔 연결 테스트` 메시지가 오면 설정이 맞습니다.
+
+**실제 요약 본문까지 받아보기:**
+
+```bash
+PYTHONPATH=. python main.py --telegram --universe 40 --top 12 --no-news
+```
+
+(뉴스까지 쓰려면 `--no-news` 를 빼면 됩니다. 다만 시간이 더 걸립니다.)
 
 ### 3) GitHub에서 매일 자동 (슬립 무관)
 

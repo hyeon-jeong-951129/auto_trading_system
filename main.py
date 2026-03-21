@@ -15,6 +15,14 @@ if str(ROOT) not in sys.path:
 from src.recommend import format_report, format_telegram_summary, run_screen
 
 
+def _load_dotenv() -> None:
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return
+    load_dotenv(ROOT / ".env")
+
+
 def main() -> None:
     p = argparse.ArgumentParser(
         description="거래대상(연구용): 외국인·기관 순매수 합 + 뉴스 키워드 + 네이버 개인 매매 위젯 교차."
@@ -59,15 +67,35 @@ def main() -> None:
         action="store_true",
         help="요약을 텔레그램으로 전송 (TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID)",
     )
+    p.add_argument(
+        "--telegram-test",
+        action="store_true",
+        help="스크리너 없이 '연결 테스트' 메시지만 텔레그램으로 보냄",
+    )
     args = p.parse_args()
 
-    if args.telegram:
-        try:
-            from dotenv import load_dotenv
-        except ImportError:
-            load_dotenv = None  # type: ignore
-        if load_dotenv:
-            load_dotenv(ROOT / ".env")
+    if args.telegram or args.telegram_test:
+        _load_dotenv()
+
+    if args.telegram_test:
+        token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+        chat_id = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
+        if not token or not chat_id:
+            print(
+                "TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID 가 필요합니다. "
+                ".env.example 을 복사해 .env 를 만든 뒤 값을 채우세요.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        from src.notify.telegram import send_telegram_chunks
+
+        send_telegram_chunks(
+            "🔔 연결 테스트\n\nauto_trading_system 봇이 정상적으로 메시지를 보냈습니다.",
+            token,
+            chat_id,
+        )
+        print("Telegram 테스트 전송 완료. 앱에서 메시지를 확인하세요.", file=sys.stderr)
+        return
 
     df = run_screen(
         universe_size=args.universe,
