@@ -1,0 +1,37 @@
+# PC가 슬립이어도 GitHub 서버에서 실행되어 텔레그램만 갑니다.
+# 저장소 Settings → Secrets → TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID 등록 필요.
+
+name: Daily Telegram summary
+
+on:
+  schedule:
+    # 월~금 한국 08:10 (전 영업일 23:10 UTC) — 장 시작 전 요약
+    - cron: "10 23 * * 0-4"
+  workflow_dispatch:
+
+jobs:
+  summarize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run screener and send Telegram
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          PYTHONPATH=. python main.py \
+            --telegram \
+            --universe 60 \
+            --flow-days 5 \
+            --top 15 \
+            --workers 6 \
+            --no-news
