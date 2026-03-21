@@ -28,7 +28,13 @@ def chunk_text(text: str, limit: int = TELEGRAM_MAX - 64) -> List[str]:
 
 def send_telegram_chunks(text: str, token: str, chat_id: str) -> None:
     url = f"https://api.telegram.org/bot{token}/sendMessage"
-    for part in chunk_text(text):
+    body = (text or "").strip()
+    if not body:
+        body = "📊 스크리너: 전송할 본문이 비어 있습니다."
+    for part in chunk_text(body):
+        part = part.strip()
+        if not part:
+            continue
         r = requests.post(
             url,
             json={"chat_id": chat_id, "text": part, "disable_web_page_preview": True},

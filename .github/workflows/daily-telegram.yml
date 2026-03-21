@@ -22,12 +22,24 @@ jobs:
       - name: Dependencies
         run: pip install -r requirements.txt
 
+      - name: Check Telegram secrets
+        run: |
+          if [ -z "${{ secrets.TELEGRAM_BOT_TOKEN }}" ]; then
+            echo "::error::Settings → Secrets → Actions 에 TELEGRAM_BOT_TOKEN 이 없습니다."
+            exit 1
+          fi
+          if [ -z "${{ secrets.TELEGRAM_CHAT_ID }}" ]; then
+            echo "::error::Settings → Secrets → Actions 에 TELEGRAM_CHAT_ID 가 없습니다."
+            exit 1
+          fi
+
       - name: Run screener → Telegram
         env:
+          PYTHONUNBUFFERED: "1"
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          PYTHONPATH=. python main.py \
+          PYTHONPATH=. python -u main.py \
             --telegram \
             --accumulation \
             --universe 70 \

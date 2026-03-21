@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import re
-from typing import List
+import time
+from typing import List, Optional
 
 import pandas as pd
 import requests
@@ -30,10 +31,22 @@ def fetch_volume_ranking_naver(sosok: int, market: str) -> pd.DataFrame:
     sosok=0: KOSPI, sosok=1: KOSDAQ 거래량 상위 페이지.
     """
     url = f"https://finance.naver.com/sise/sise_quant.naver?sosok={sosok}"
-    r = _SESSION.get(url, timeout=25)
-    r.encoding = "euc-kr"
-    r.raise_for_status()
-    soup = BeautifulSoup(r.text, "lxml")
+    last_err: Optional[Exception] = None
+    text = ""
+    for attempt in range(3):
+        try:
+            r = _SESSION.get(url, timeout=30)
+            r.encoding = "euc-kr"
+            r.raise_for_status()
+            text = r.text
+            break
+        except Exception as e:
+            last_err = e
+            time.sleep(2.0 * (attempt + 1))
+    else:
+        raise RuntimeError(f"네이버 거래량 페이지 요청 실패(sosok={sosok}): {last_err}") from last_err
+
+    soup = BeautifulSoup(text, "html.parser")
     tb = soup.select_one("table.type_2")
     if tb is None:
         return pd.DataFrame(columns=["Code", "Name", "Market", "Volume"])
