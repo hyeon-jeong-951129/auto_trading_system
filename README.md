@@ -78,56 +78,13 @@ PYTHONPATH=. python main.py --telegram --universe 40 --top 12 --no-news
 
 ### 3) GitHub에서 매일 자동 (슬립 무관)
 
-이 저장소를 GitHub에 올린 뒤:
+1. **Secrets:** 저장소 **Settings → Secrets and variables → Actions** 에 `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` 추가.
 
-**Settings → Secrets and variables → Actions** 에 `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` 를 등록합니다.
+2. **워크플로 파일 위치:** 레포 안에 [`scripts/github-actions/daily-telegram.yml`](scripts/github-actions/daily-telegram.yml) 를 두었습니다. GitHub 웹에서 **Add file → Create new file** 로 경로를 **`/.github/workflows/daily-telegram.yml`** 로 지정한 뒤, 그 파일 **내용 전체를 복사해 붙여 넣고 Commit** 하세요. (로컬 `git push`에 **workflow** 권한이 없으면 `.github/workflows/` 푸시가 거절되는 경우가 있어, 웹에서 만드는 방식이 안전합니다.)
 
-`.github/workflows/daily-telegram.yml` 이 **월~금** 한국 장 시작 무렵(UTC 기준 스케줄)에 실행됩니다. 수동 실행은 Actions 탭에서 **Run workflow** 로 할 수 있습니다.
+3. **테스트:** **Actions** 탭 → **Telegram daily screener** → **Run workflow** → Run. 성공하면 텔레그램으로 요약이 옵니다.
 
-워크플로에서는 속도·안정성을 위해 `--no-news` 로 돌리도록 되어 있습니다. 뉴스까지 쓰려면 YAML에서 `--no-news` 줄을 제거하세요.
-
-**로컬 `git push`가 거절될 때:** GitHub 토큰에 `workflow` 범위가 없으면 `.github/workflows/*.yml` 이 포함된 푸시가 막힙니다. 해결: (1) [Fine-grained / classic PAT](https://github.com/settings/tokens)에 **Workflow** 권한을 켜고 다시 푸시하거나, (2) 아래 YAML을 GitHub 웹에서 **Add file → Create new file** 로 `/.github/workflows/daily-telegram.yml` 에 붙여 넣습니다.
-
-<details>
-<summary>daily-telegram.yml 전문 (펼치기)</summary>
-
-```yaml
-# PC가 슬립이어도 GitHub 서버에서 실행되어 텔레그램만 갑니다.
-# 저장소 Settings → Secrets → TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID 등록 필요.
-
-name: Daily Telegram summary
-
-on:
-  schedule:
-    - cron: "10 23 * * 0-4"
-  workflow_dispatch:
-
-jobs:
-  summarize:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-      - name: Run screener and send Telegram
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: |
-          PYTHONPATH=. python main.py \
-            --telegram \
-            --universe 60 \
-            --flow-days 5 \
-            --top 15 \
-            --workers 6 \
-            --no-news
-```
-
-</details>
+스케줄은 월~금 UTC `10 23` (한국 장전 무렵)입니다. 뉴스까지 쓰려면 YAML의 `--no-news` 줄을 제거하세요.
 
 ## 한계
 

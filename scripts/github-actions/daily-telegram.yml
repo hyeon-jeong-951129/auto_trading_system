@@ -1,0 +1,38 @@
+# Secrets: TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID (Repository → Settings → Secrets → Actions)
+# 수동 테스트: Actions 탭 → 이 워크플로 → Run workflow
+
+name: Telegram daily screener
+
+on:
+  schedule:
+    - cron: "10 23 * * 0-4" # 월~금 한국 장전 무렵 (UTC)
+  workflow_dispatch:
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run screener → Telegram
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          PYTHONPATH=. python main.py \
+            --telegram \
+            --accumulation \
+            --universe 70 \
+            --flow-days 5 \
+            --top 12 \
+            --max-rise 14 \
+            --workers 6 \
+            --no-news
