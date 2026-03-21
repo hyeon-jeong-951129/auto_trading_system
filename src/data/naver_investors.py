@@ -87,3 +87,15 @@ def sum_flow(df: pd.DataFrame, days: int) -> tuple[float, float]:
     inst = float(tail["기관순매매"].sum())
     frgn = float(tail["외국인순매매"].sum())
     return inst, frgn
+
+
+def close_window_pct(df: pd.DataFrame, days: int) -> float:
+    """최근 `days`거래일 구간에서 첫 거래일 종가 대비 마지막 종가 등락률(%)."""
+    t = df.tail(days)
+    if len(t) < 2:
+        return 0.0
+    lo = float(t["종가"].iloc[0])
+    hi = float(t["종가"].iloc[-1])
+    if lo <= 0:
+        return 0.0
+    return (hi / lo - 1.0) * 100.0

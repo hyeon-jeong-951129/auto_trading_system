@@ -77,6 +77,17 @@ def main() -> None:
         action="store_true",
         help="--telegram-test 와 동일 (연결만 확인)",
     )
+    p.add_argument(
+        "--accumulation",
+        action="store_true",
+        help="외인·기관 동반 순매수만, 단기 급등/개인위젯 랭킹 종목 제외 (늦은 붙기 후보 축소)",
+    )
+    p.add_argument(
+        "--max-rise",
+        type=float,
+        default=14.0,
+        help="--accumulation 일 때 최근 flow-days 구간 종가 등락률(%%) 상한 (기본 14)",
+    )
     args = p.parse_args()
 
     telegram_test = args.telegram_test or args.test
@@ -109,6 +120,8 @@ def main() -> None:
         flow_days=args.flow_days,
         max_workers=args.workers,
         fetch_news=not args.no_news,
+        accumulation=args.accumulation,
+        max_rise_pct=args.max_rise,
     )
     if args.csv and not df.empty:
         # 리스트 컬럼은 CSV에 깨질 수 있어 제외
@@ -127,7 +140,13 @@ def main() -> None:
             sys.exit(1)
         from src.notify.telegram import send_telegram_chunks
 
-        msg = format_telegram_summary(df, head=args.top, flow_days=args.flow_days)
+        msg = format_telegram_summary(
+            df,
+            head=args.top,
+            flow_days=args.flow_days,
+            accumulation=args.accumulation,
+            max_rise_pct=args.max_rise,
+        )
         send_telegram_chunks(msg, token, chat_id)
         print("Telegram 전송 완료", file=sys.stderr)
         print(msg)

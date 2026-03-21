@@ -33,6 +33,8 @@ PYTHONPATH=. python main.py --universe 60 --flow-days 5 --top 15
 ```
 
 - `--no-news`: 뉴스 생략 (네이버만 빠르게 스캔)
+- `--accumulation`: **외인·기관 둘 다 순매수**인 종목만 남기고, 최근 **종가 급등**(기본 `flow-days` 구간 **14% 초과**)·**네이버 개인 매매 위젯**에 뜬 종목은 제외 (단기 과열·개미 붙기 후보 줄이기)
+- `--max-rise 14`: `--accumulation` 일 때 위 구간 등락률 상한(%) 조정
 - `--csv out.csv`: 결과 테이블 저장
 - `--workers 4`: 동시 요청 줄이기 (차단 시)
 
