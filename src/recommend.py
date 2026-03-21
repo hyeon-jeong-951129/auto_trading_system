@@ -12,6 +12,7 @@ import FinanceDataReader as fdr
 import pandas as pd
 
 from src.data.naver_investors import close_window_pct, fetch_investor_daily, sum_flow
+from src.data.naver_listing import fetch_volume_ranking_naver
 from src.data.naver_retail_top import fetch_individual_netbuy_codes
 from src.data.news_signals import score_stock_news
 
@@ -39,13 +40,35 @@ class Row:
     score: float
 
 
-def _load_universe(top_n: int) -> pd.DataFrame:
-    df = fdr.StockListing("KRX")
+def _filter_universe_df(df: pd.DataFrame, top_n: int) -> pd.DataFrame:
+    if df.empty:
+        return df
     df = df[df["Market"].isin(["KOSPI", "KOSDAQ"])].copy()
+    df["Code"] = df["Code"].astype(str).str.zfill(6)
     df = df[~df["Name"].astype(str).str.contains(_ETF_PATTERN, na=False)]
     df = df[~df["Name"].astype(str).str.contains(_EXCLUDE_NAME, na=False)]
     df = df.sort_values("Volume", ascending=False).head(top_n)
     return df[["Code", "Name", "Market", "Volume"]]
+
+
+def _load_universe(top_n: int) -> pd.DataFrame:
+    """
+    기본: FinanceDataReader(KRX). KRX가 JSON/HTML 오류(해외 IP·장애)면 네이버 거래량 순위로 대체.
+    """
+    df: Optional[pd.DataFrame] = None
+    try:
+        df = fdr.StockListing("KRX")
+    except Exception:
+        df = None
+    if df is None or len(df) == 0:
+        k0 = fetch_volume_ranking_naver(0, "KOSPI")
+        k1 = fetch_volume_ranking_naver(1, "KOSDAQ")
+        df = pd.concat([k0, k1], ignore_index=True)
+        if df.empty:
+            return df
+        df = df.sort_values("Volume", ascending=False)
+        df = df.drop_duplicates(subset=["Code"], keep="first")
+    return _filter_universe_df(df, top_n)
 
 
 def _one_ticker(

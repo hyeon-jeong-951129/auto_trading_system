@@ -89,4 +89,5 @@ PYTHONPATH=. python main.py --telegram --universe 40 --top 12 --no-news
 ## 한계
 
 - KRX 공식 JSON 일부는 세션/정책으로 막히는 경우가 있어, 본 프로젝트는 **네이버 HTML 파싱**에 의존합니다. 페이지 구조가 바뀌면 수정이 필요합니다.
+- **GitHub Actions** 등 해외 IP에서는 `FinanceDataReader`의 KRX 상장리스트가 실패할 수 있어, 자동으로 **네이버 거래량 순위**로 유니버스를 대체합니다.
 - 뉴스 점수는 **키워드 카운트** 수준이며, NLP나 공시(DART) 실적 서프라이즈는 포함하지 않습니다. 확장 시 DART Open API 키로 분기·연결 실적을 붙이면 좋습니다.
