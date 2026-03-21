@@ -45,14 +45,14 @@ PYTHONPATH=. python main.py --universe 60 --flow-days 5 --top 15
 1. 텔레그램에서 [@BotFather](https://t.me/BotFather)에 `/newbot` 으로 봇을 만들고 **HTTP API 토큰**을 복사합니다.  
 2. **본인 텔레그램 앱에서 방금 만든 봇을 검색해 `/start` 또는 아무 말이나 보냅니다.** (이걸 안 하면 봇이 나에게 메시지를 못 보낼 수 있습니다.)  
 3. [@userinfobot](https://t.me/userinfobot) 에 `/start` 하면 **숫자 `Id:`** 가 나옵니다. 그게 **`TELEGRAM_CHAT_ID`** 입니다.  
-4. 프로젝트 폴더에서:
+4. 프로젝트 루트(`stock-recommendation-system` 폴더)에 **`.env`** 파일을 새로 만들고 두 줄만 넣습니다. (숨김 파일이라 Finder에서는 `Cmd+Shift+.` 로 보이게 할 수 있음)
 
-   ```bash
-   cd ~/stock-recommendation-system   # 클론한 경로에 맞게
-   cp .env.example .env
+   ```env
+   TELEGRAM_BOT_TOKEN=BotFather가_준_토큰
+   TELEGRAM_CHAT_ID=userinfobot_Id_숫자
    ```
 
-   `.env` 를 열어 `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` 만 본인 값으로 바꿉니다. (따옴표 없이)
+   따옴표 없이 저장합니다.
 
 ### 2) 로컬에서 테스트
 

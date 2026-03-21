@@ -72,18 +72,25 @@ def main() -> None:
         action="store_true",
         help="스크리너 없이 '연결 테스트' 메시지만 텔레그램으로 보냄",
     )
+    p.add_argument(
+        "--test",
+        action="store_true",
+        help="--telegram-test 와 동일 (연결만 확인)",
+    )
     args = p.parse_args()
 
-    if args.telegram or args.telegram_test:
+    telegram_test = args.telegram_test or args.test
+
+    if args.telegram or telegram_test:
         _load_dotenv()
 
-    if args.telegram_test:
+    if telegram_test:
         token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
         chat_id = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
         if not token or not chat_id:
             print(
                 "TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID 가 필요합니다. "
-                ".env.example 을 복사해 .env 를 만든 뒤 값을 채우세요.",
+                "프로젝트 루트에 .env 파일을 만들고 TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID 를 넣으세요.",
                 file=sys.stderr,
             )
             sys.exit(1)

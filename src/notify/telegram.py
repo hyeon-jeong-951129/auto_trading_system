@@ -34,6 +34,11 @@ def send_telegram_chunks(text: str, token: str, chat_id: str) -> None:
             json={"chat_id": chat_id, "text": part, "disable_web_page_preview": True},
             timeout=60,
         )
+        if r.status_code == 401:
+            raise RuntimeError(
+                "Telegram API 401 (Unauthorized): 봇 토큰이 잘못됐거나 예시 값입니다. "
+                ".env 의 TELEGRAM_BOT_TOKEN 을 BotFather가 준 전체 문자열로 바꾸세요(따옴표·공백 없이)."
+            )
         if not r.ok:
             raise RuntimeError(f"Telegram API {r.status_code}: {r.text[:500]}")
         data = r.json()
