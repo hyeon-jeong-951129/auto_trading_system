@@ -58,6 +58,7 @@ class Row:
     priority_score: float = 0.0
     priority_tier: str = "-"
     investor_last_date: str = ""
+    investor_page_session_date: str = ""
 
 
 def _investor_last_date_str(daily: pd.DataFrame) -> str:
@@ -189,9 +190,16 @@ def _one_ticker(
     min_foreign_last_share: float,
     min_foreign_vs_retail: float,
 ) -> Optional[Row]:
-    daily = fetch_investor_daily(code)
+    daily, page_session = fetch_investor_daily(code)
     if daily is None or len(daily) < flow_days:
         return None
+    # 네이버 PC HTML: 상단 기준일(em.date)은 최신인데 tbody 일별 행이 하루 짧게 오는 경우가 있음(정적 파싱 한계).
+    # 누적매집은 '막일' 수급이 핵심이므로 표 막일 < 페이지 기준일이면 스킵.
+    if accumulation and page_session is not None:
+        tmax = pd.Timestamp(daily["날짜"].max()).normalize()
+        ps = pd.Timestamp(page_session).normalize()
+        if tmax.date() < ps.date():
+            return None
     inst, frgn = sum_flow(daily, flow_days)
     combined = frgn + inst
     rise_pct = close_window_pct(daily, flow_days)
@@ -266,6 +274,9 @@ def _one_ticker(
 
     vol_sum = float(daily.tail(flow_days)["거래량"].fillna(0).sum())
     inv_asof = _investor_last_date_str(daily)
+    page_asof = (
+        pd.Timestamp(page_session).strftime("%Y-%m-%d") if page_session is not None else ""
+    )
     pri, tier = _priority_meta(
         accumulation,
         score,
@@ -309,6 +320,7 @@ def _one_ticker(
         priority_score=pri,
         priority_tier=tier,
         investor_last_date=inv_asof,
+        investor_page_session_date=page_asof,
     )
 
 
@@ -509,13 +521,19 @@ def format_telegram_summary(
             if bool(r.get("supply_handoff", False)):
                 fq_note += " 수급전환"
             idt = str(r.get("investor_last_date") or "").strip()
+            ipg = str(r.get("investor_page_session_date") or "").strip()
             if idt:
                 fq_note += f" 동향일{idt}"
+            if ipg and idt and ipg != idt:
+                fq_note += f" ⚠️페이지기준{ipg}(표와 불일치)"
         else:
             fq_note = ""
             idt = str(r.get("investor_last_date") or "").strip()
+            ipg = str(r.get("investor_page_session_date") or "").strip()
             if idt:
                 fq_note = f" 동향일{idt}"
+            if ipg and idt and ipg != idt:
+                fq_note += f" ⚠️페이지기준{ipg}(표와 불일치)"
         lines.append(
             f"{rank}. [{pt}] {r['code']} {nm}\n"
             f"   합 {sm:.1f}만주 (외 {fn:.1f} / 기 {inn:.1f}) "

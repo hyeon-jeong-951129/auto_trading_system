@@ -20,6 +20,18 @@ _SESSION.headers.update(
 )
 
 
+def _parse_frgn_page_session_date(html: str) -> Optional[pd.Timestamp]:
+    """
+    외국인/투자자 표 상단에 표시되는 '기준일'(예: 2026.03.27).
+    tbody 일별 행이 아직 한 줄 덜 내려온 경우(표 막일 < 기준일) 감지용.
+    """
+    m = re.search(r'class="date">\s*(\d{4})\.(\d{2})\.(\d{2})', html)
+    if not m:
+        return None
+    y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+    return pd.Timestamp(year=y, month=mo, day=d)
+
+
 def _parse_number(x) -> float:
     if pd.isna(x):
         return 0.0
@@ -33,21 +45,28 @@ def _parse_number(x) -> float:
         return 0.0
 
 
-def fetch_investor_daily(code: str) -> Optional[pd.DataFrame]:
+def fetch_investor_daily(
+    code: str,
+) -> tuple[Optional[pd.DataFrame], Optional[pd.Timestamp]]:
     """
     종목코드(6자리) 기준 최근 일별: 개인·기관·외국인 순매매량(주).
-    실패 시 None.
+
+    반환:
+    - 표(DataFrame): 파싱된 일별 테이블(서버 HTML 기준, 최신 거래일 행이 아직 없을 수 있음)
+    - 페이지 기준일: 상단 `em.date` 기준일(브라우저와 표 tbody가 어긋날 때 비교용)
+    실패 시 (None, None).
     """
     code = str(code).zfill(6)
     url = f"https://finance.naver.com/item/frgn.naver?code={code}"
     r = _SESSION.get(url, timeout=20)
     r.encoding = "euc-kr"
     if r.status_code != 200:
-        return None
+        return None, None
+    page_session = _parse_frgn_page_session_date(r.text)
     try:
         tables = pd.read_html(StringIO(r.text))
     except ValueError:
-        return None
+        return None, page_session
     raw = None
     for cand in tables:
         if not isinstance(cand.columns, pd.MultiIndex):
@@ -57,7 +76,7 @@ def fetch_investor_daily(code: str) -> Optional[pd.DataFrame]:
             raw = cand
             break
     if raw is None:
-        return None
+        return None, page_session
     raw = raw.copy()
     # 네이버 표 컬럼 수가 환경에 따라 다를 수 있어 길이로 분기
     # (개인 순매수 열이 있는 경우 포함)
@@ -100,7 +119,7 @@ def fetch_investor_daily(code: str) -> Optional[pd.DataFrame]:
     cols = ["날짜", "종가", "등락률", "거래량", "기관순매매", "외국인순매매"]
     if "개인순매매" in df.columns:
         cols.insert(4, "개인순매매")
-    return df[cols]
+    return df[cols], page_session
 
 
 def sum_flow(df: pd.DataFrame, days: int) -> tuple[float, float]:
