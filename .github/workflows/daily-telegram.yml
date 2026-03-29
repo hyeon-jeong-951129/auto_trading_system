@@ -5,7 +5,8 @@ name: Telegram daily screener
 
 on:
   schedule:
-    - cron: "10 23 * * 0-4" # 월~금 한국 장전 무렵 (UTC)
+    # 월~금 장 시작 전 아침(한국 08:00 KST ≈ 전날 UTC 23:00, 일~목 트리거 → 월~금 실행)
+    - cron: "0 23 * * 0-4"
   workflow_dispatch:
 
 jobs:
@@ -38,8 +39,7 @@ jobs:
           PYTHONUNBUFFERED: "1"
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        # 로컬과 동일: python3 main.py --telegram --accumulation --no-news --universe 70 --top 12
-        # (나머지는 기본값: flow-days=5, max-rise=14 …) 보수 컷은 --min-score-ratio 로 필요 시 추가
+        # 보수 텔레그램 컷 + 아침 발송(전일 장 마감 데이터 기준)
         run: |
           PYTHONPATH=. python -u main.py \
             --telegram \
@@ -48,5 +48,6 @@ jobs:
             --flow-days 5 \
             --top 12 \
             --max-rise 14 \
+            --min-score-ratio 0.45 \
             --workers 6 \
             --no-news
