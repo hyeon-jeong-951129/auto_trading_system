@@ -38,6 +38,8 @@ jobs:
           PYTHONUNBUFFERED: "1"
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        # 로컬과 동일: python3 main.py --telegram --accumulation --no-news --universe 70 --top 12
+        # (나머지는 기본값: flow-days=5, max-rise=14 …) 보수 컷은 --min-score-ratio 로 필요 시 추가
         run: |
           PYTHONPATH=. python -u main.py \
             --telegram \
@@ -46,6 +48,5 @@ jobs:
             --flow-days 5 \
             --top 12 \
             --max-rise 14 \
-            --min-score-ratio 0.45 \
             --workers 6 \
             --no-news

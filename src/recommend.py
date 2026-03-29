@@ -57,6 +57,16 @@ class Row:
     flow_window_volume: float = 0.0
     priority_score: float = 0.0
     priority_tier: str = "-"
+    investor_last_date: str = ""
+
+
+def _investor_last_date_str(daily: pd.DataFrame) -> str:
+    """네이버 투자자동향 테이블의 가장 최근 행 날짜(막 거래일)."""
+    try:
+        ts = daily["날짜"].iloc[-1]
+        return pd.Timestamp(ts).strftime("%Y-%m-%d")
+    except Exception:
+        return ""
 
 
 def _priority_meta(
@@ -255,6 +265,7 @@ def _one_ticker(
         score = combined + news_adj + retail_adj
 
     vol_sum = float(daily.tail(flow_days)["거래량"].fillna(0).sum())
+    inv_asof = _investor_last_date_str(daily)
     pri, tier = _priority_meta(
         accumulation,
         score,
@@ -297,6 +308,7 @@ def _one_ticker(
         flow_window_volume=vol_sum,
         priority_score=pri,
         priority_tier=tier,
+        investor_last_date=inv_asof,
     )
 
 
@@ -496,11 +508,17 @@ def format_telegram_summary(
             fq_note = f" 외인양수{fpd}일 집중{fc:.2f} 모멘텀{fm:+,.0f}만"
             if bool(r.get("supply_handoff", False)):
                 fq_note += " 수급전환"
+            idt = str(r.get("investor_last_date") or "").strip()
+            if idt:
+                fq_note += f" 동향일{idt}"
         else:
             fq_note = ""
+            idt = str(r.get("investor_last_date") or "").strip()
+            if idt:
+                fq_note = f" 동향일{idt}"
         lines.append(
             f"{rank}. [{pt}] {r['code']} {nm}\n"
-            f"   합 {sm:,.0f}만주 (외 {fn:,.0f} / 기 {inn:,.0f}) "
+            f"   합 {sm:.1f}만주 (외 {fn:.1f} / 기 {inn:.1f}) "
             f"{flow_days}일종가 {rp:+.1f}% 뉴스±{r['news_pos']}/{r['news_neg']} {ret}{fq_note}"
         )
     lines.append("")
