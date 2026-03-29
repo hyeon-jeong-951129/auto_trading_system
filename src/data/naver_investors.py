@@ -35,7 +35,7 @@ def _parse_number(x) -> float:
 
 def fetch_investor_daily(code: str) -> Optional[pd.DataFrame]:
     """
-    종목코드(6자리) 기준 최근 일별: 기관·외국인 순매매량(주).
+    종목코드(6자리) 기준 최근 일별: 개인·기관·외국인 순매매량(주).
     실패 시 None.
     """
     code = str(code).zfill(6)
@@ -59,26 +59,48 @@ def fetch_investor_daily(code: str) -> Optional[pd.DataFrame]:
     if raw is None:
         return None
     raw = raw.copy()
-    raw.columns = [
-        "날짜",
-        "종가",
-        "전일비",
-        "등락률",
-        "거래량",
-        "기관순매매",
-        "외국인순매매",
-        "외국인보유주수",
-        "외국인보유율",
-    ]
+    # 네이버 표 컬럼 수가 환경에 따라 다를 수 있어 길이로 분기
+    # (개인 순매수 열이 있는 경우 포함)
+    if raw.shape[1] >= 10:
+        raw = raw.iloc[:, :10]
+        raw.columns = [
+            "날짜",
+            "종가",
+            "전일비",
+            "등락률",
+            "거래량",
+            "개인순매매",
+            "기관순매매",
+            "외국인순매매",
+            "외국인보유주수",
+            "외국인보유율",
+        ]
+    else:
+        raw.columns = [
+            "날짜",
+            "종가",
+            "전일비",
+            "등락률",
+            "거래량",
+            "기관순매매",
+            "외국인순매매",
+            "외국인보유주수",
+            "외국인보유율",
+        ]
     df = raw.copy()
     df["날짜"] = pd.to_datetime(df["날짜"], errors="coerce")
     df = df.dropna(subset=["날짜"])
-    for col in ("기관순매매", "외국인순매매", "거래량"):
+    for col in ("개인순매매", "기관순매매", "외국인순매매", "거래량"):
+        if col not in df.columns:
+            continue
         df[col] = df[col].map(_parse_number)
     df["등락률"] = df["등락률"].astype(str).str.replace("%", "", regex=False)
     df["등락률"] = pd.to_numeric(df["등락률"], errors="coerce").fillna(0.0)
     df = df.sort_values("날짜")
-    return df[["날짜", "종가", "등락률", "거래량", "기관순매매", "외국인순매매"]]
+    cols = ["날짜", "종가", "등락률", "거래량", "기관순매매", "외국인순매매"]
+    if "개인순매매" in df.columns:
+        cols.insert(4, "개인순매매")
+    return df[cols]
 
 
 def sum_flow(df: pd.DataFrame, days: int) -> tuple[float, float]:
@@ -97,14 +119,24 @@ def flow_quality_metrics(df: pd.DataFrame, days: int) -> Dict[str, Any]:
     - 일별 외국인 순매수 절댓값 기준 '한두 날 몰림' 정도(concentration)
     """
     tail = df.tail(days)
+    r = (
+        tail["개인순매매"].astype(float).values
+        if "개인순매매" in tail.columns
+        else [0.0] * len(tail)
+    )
     f = tail["외국인순매매"].astype(float).values
     ins = tail["기관순매매"].astype(float).values
     n = len(f)
     foreign_pos_days = int((f > 0).sum())
     inst_pos_days = int((ins > 0).sum())
     both_pos_days = int(((f > 0) & (ins > 0)).sum())
+    retail_pos_days = sum(1 for x in r if x > 0) if n else 0
     foreign_last = float(f[-1]) if n else 0.0
     inst_last = float(ins[-1]) if n else 0.0
+    retail_last = float(r[-1]) if n else 0.0
+    vol_last = float(tail["거래량"].astype(float).values[-1]) if n else 0.0
+    retail_last_share = (retail_last / vol_last) if vol_last > 0 else 0.0
+    foreign_last_share = (foreign_last / vol_last) if vol_last > 0 else 0.0
     abs_f = [abs(x) for x in f]
     total_abs = sum(abs_f)
     concentration = (max(abs_f) / total_abs) if total_abs > 0 else 0.0
@@ -115,12 +147,20 @@ def flow_quality_metrics(df: pd.DataFrame, days: int) -> Dict[str, Any]:
         prev3 = float(f[-5] + f[-4] + f[-3])
         momentum = last2 - prev3
 
+    # 막일 개인 매수세가 전일보다 약하고, 외인 매수세가 전일보다 강함 → 수급 전환(외인 주도) 힌트
+    supply_handoff = bool(n >= 2 and r[-1] < r[-2] and f[-1] > f[-2])
+
     return {
         "foreign_positive_days": foreign_pos_days,
         "inst_positive_days": inst_pos_days,
         "both_positive_days": both_pos_days,
+        "retail_positive_days": retail_pos_days,
         "foreign_last_day": foreign_last,
         "inst_last_day": inst_last,
+        "retail_last_day": retail_last,
+        "retail_last_share": float(retail_last_share),
+        "foreign_last_share": float(foreign_last_share),
+        "supply_handoff": supply_handoff,
         "foreign_momentum": momentum,
         "foreign_concentration": float(concentration),
     }

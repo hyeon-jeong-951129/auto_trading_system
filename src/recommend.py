@@ -50,6 +50,10 @@ class Row:
     inst_last_day: float = 0.0
     foreign_momentum: float = 0.0
     foreign_concentration: float = 0.0
+    retail_last_day: float = 0.0
+    retail_last_share: float = 0.0
+    foreign_last_share: float = 0.0
+    supply_handoff: bool = False
     flow_window_volume: float = 0.0
     priority_score: float = 0.0
     priority_tier: str = "-"
@@ -67,6 +71,8 @@ def _priority_meta(
     max_rise_pct: float,
     flow_window_volume: float,
     foreign_concentration: float,
+    retail_last_share: float,
+    supply_handoff: bool,
 ) -> tuple[float, str]:
     """
     자동매매·알림 우선순위용 점수(정렬·텔레그램 컷).
@@ -80,7 +86,10 @@ def _priority_meta(
     fd = max(int(flow_days), 1)
 
     if not accumulation:
-        return score + liq, "-"
+        p = score + liq
+        if supply_handoff:
+            p += 180_000.0
+        return p, "-"
 
     persist = 450_000.0 * (both_positive_days / fd) + 180_000.0 * (foreign_positive_days / fd)
 
@@ -94,8 +103,22 @@ def _priority_meta(
     chase_penalty_relief = 120_000.0 * room
 
     conc_pen = 150_000.0 * max(0.0, foreign_concentration - 0.45)
+    # 개인 막일 매수 비중이 클수록(=crowded) 우선순위에서 추가 감점 (수급전환 신호면 완화)
+    retail_pen = 420_000.0 * max(0.0, retail_last_share - 0.18)
+    if supply_handoff:
+        retail_pen *= 0.35
+    handoff_bonus = 280_000.0 if supply_handoff else 0.0
 
-    p = score + liq + persist + balance_bonus + chase_penalty_relief - conc_pen
+    p = (
+        score
+        + liq
+        + persist
+        + balance_bonus
+        + chase_penalty_relief
+        + handoff_bonus
+        - conc_pen
+        - retail_pen
+    )
 
     if both_positive_days >= fd - 1 and foreign_positive_days >= fd - 1 and bal >= 0.12:
         tier = "S"
@@ -152,6 +175,9 @@ def _one_ticker(
     min_both_positive_days: int,
     min_foreign_momentum: float,
     min_rise_pct: float,
+    retail_crowded_share: float,
+    min_foreign_last_share: float,
+    min_foreign_vs_retail: float,
 ) -> Optional[Row]:
     daily = fetch_investor_daily(code)
     if daily is None or len(daily) < flow_days:
@@ -164,6 +190,10 @@ def _one_ticker(
     bp_days = int(fq["both_positive_days"])
     f_last = float(fq["foreign_last_day"])
     i_last = float(fq["inst_last_day"])
+    r_last = float(fq.get("retail_last_day", 0.0))
+    r_share = float(fq.get("retail_last_share", 0.0))
+    f_share_last = float(fq.get("foreign_last_share", 0.0))
+    supply_handoff = bool(fq.get("supply_handoff", False))
     f_mom = float(fq["foreign_momentum"])
     f_conc = float(fq["foreign_concentration"])
     in_retail = code in retail_codes
@@ -195,6 +225,14 @@ def _one_ticker(
         # 막일 기관 순매수도 양수여야 "지속 매수"로 판단
         if i_last <= 0:
             return None
+        # 막일 개인 순매수가 크고(거래량 대비), 외인 막일 매수가 충분히 크지 않으면 제외
+        # 단, 외인이 거래량 대비 일정 비율 이상 매수이거나 개인 매수 규모 대비 외인이 충분하면 예외
+        if r_last > 0 and r_share >= retail_crowded_share:
+            strong_foreign = f_share_last >= min_foreign_last_share or (
+                f_last >= min_foreign_vs_retail * r_last
+            )
+            if not strong_foreign:
+                return None
         # 최근 매수 모멘텀이 꺾였으면 제외
         if f_mom < min_foreign_momentum:
             return None
@@ -209,6 +247,8 @@ def _one_ticker(
         score += 0.08 * mom_clamped
         # 일별 외인 매수가 특정 하루에 과도하게 몰릴수록 감점 (스파이크성)
         score -= 180_000.0 * max(0.0, f_conc - 0.52)
+        if supply_handoff:
+            score += 140_000.0
     else:
         news_adj = (npos - nneg) * 50_000
         retail_adj = 200_000 if in_retail else 0
@@ -227,6 +267,8 @@ def _one_ticker(
         max_rise_pct,
         vol_sum,
         f_conc,
+        r_share,
+        supply_handoff,
     )
 
     return Row(
@@ -248,6 +290,10 @@ def _one_ticker(
         inst_last_day=i_last,
         foreign_momentum=f_mom,
         foreign_concentration=f_conc,
+        retail_last_day=r_last,
+        retail_last_share=r_share,
+        foreign_last_share=f_share_last,
+        supply_handoff=supply_handoff,
         flow_window_volume=vol_sum,
         priority_score=pri,
         priority_tier=tier,
@@ -266,6 +312,9 @@ def run_screen(
     min_both_positive_days: int = 2,
     min_foreign_momentum: float = 0.0,
     min_rise_pct: float = 0.0,
+    retail_crowded_share: float = 0.28,
+    min_foreign_last_share: float = 0.012,
+    min_foreign_vs_retail: float = 0.35,
     sort_by: str = "priority",
 ) -> pd.DataFrame:
     universe = _load_universe(universe_size)
@@ -288,6 +337,9 @@ def run_screen(
                 min_both_positive_days,
                 min_foreign_momentum,
                 min_rise_pct,
+                retail_crowded_share,
+                min_foreign_last_share,
+                min_foreign_vs_retail,
             ): r
             for _, r in universe.iterrows()
         }
@@ -442,6 +494,8 @@ def format_telegram_summary(
             fc = float(r.get("foreign_concentration", 0.0))
             fm = float(r.get("foreign_momentum", 0.0)) / 10_000.0
             fq_note = f" 외인양수{fpd}일 집중{fc:.2f} 모멘텀{fm:+,.0f}만"
+            if bool(r.get("supply_handoff", False)):
+                fq_note += " 수급전환"
         else:
             fq_note = ""
         lines.append(
