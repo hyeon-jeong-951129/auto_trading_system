@@ -59,6 +59,7 @@ class Row:
     priority_tier: str = "-"
     investor_last_date: str = ""
     investor_page_session_date: str = ""
+    last_day_change_pct: float = 0.0
 
 
 def _investor_last_date_str(daily: pd.DataFrame) -> str:
@@ -84,6 +85,7 @@ def _priority_meta(
     foreign_concentration: float,
     retail_last_share: float,
     supply_handoff: bool,
+    inst_last_day: float,
 ) -> tuple[float, str]:
     """
     자동매매·알림 우선순위용 점수(정렬·텔레그램 컷).
@@ -131,7 +133,12 @@ def _priority_meta(
         - retail_pen
     )
 
-    if both_positive_days >= fd - 1 and foreign_positive_days >= fd - 1 and bal >= 0.12:
+    if (
+        both_positive_days >= fd - 1
+        and foreign_positive_days >= fd - 1
+        and bal >= 0.12
+        and inst_last_day > 0
+    ):
         tier = "S"
     elif both_positive_days >= max(2, fd - 2) and foreign_positive_days >= 3:
         tier = "A"
@@ -189,6 +196,8 @@ def _one_ticker(
     retail_crowded_share: float,
     min_foreign_last_share: float,
     min_foreign_vs_retail: float,
+    max_last_day_change_pct: float,
+    min_last_day_change_pct: float,
 ) -> Optional[Row]:
     daily, page_session = fetch_investor_daily(code)
     if daily is None or len(daily) < flow_days:
@@ -204,6 +213,7 @@ def _one_ticker(
     combined = frgn + inst
     rise_pct = close_window_pct(daily, flow_days)
     fq = flow_quality_metrics(daily, flow_days)
+    last_day_pct = float(daily["등락률"].iloc[-1])
     fp_days = int(fq["foreign_positive_days"])
     bp_days = int(fq["both_positive_days"])
     f_last = float(fq["foreign_last_day"])
@@ -240,8 +250,10 @@ def _one_ticker(
         # 외인-기관 동반 양수 흐름이 너무 약하면 제외(보수 필터)
         if bp_days < min_both_positive_days:
             return None
-        # 막일 기관 순매수도 양수여야 "지속 매수"로 판단
-        if i_last <= 0:
+        # 막일 종가 등락률: 급등 추격·급락 약세 제외 (전일 대비 %, 네이버 표 기준)
+        if last_day_pct > max_last_day_change_pct:
+            return None
+        if last_day_pct < min_last_day_change_pct:
             return None
         # 막일 개인 순매수가 크고(거래량 대비), 외인 막일 매수가 충분히 크지 않으면 제외
         # 단, 외인이 거래량 대비 일정 비율 이상 매수이거나 개인 매수 규모 대비 외인이 충분하면 예외
@@ -267,6 +279,11 @@ def _one_ticker(
         score -= 180_000.0 * max(0.0, f_conc - 0.52)
         if supply_handoff:
             score += 140_000.0
+        # 막일 기관 순매수: 필수 아님 — 양수면 가산, 음수/0이면 감점
+        if i_last > 0:
+            score += 95_000.0
+        else:
+            score -= 60_000.0
     else:
         news_adj = (npos - nneg) * 50_000
         retail_adj = 200_000 if in_retail else 0
@@ -291,6 +308,7 @@ def _one_ticker(
         f_conc,
         r_share,
         supply_handoff,
+        i_last,
     )
 
     return Row(
@@ -321,6 +339,7 @@ def _one_ticker(
         priority_tier=tier,
         investor_last_date=inv_asof,
         investor_page_session_date=page_asof,
+        last_day_change_pct=last_day_pct,
     )
 
 
@@ -339,6 +358,8 @@ def run_screen(
     retail_crowded_share: float = 0.28,
     min_foreign_last_share: float = 0.012,
     min_foreign_vs_retail: float = 0.35,
+    max_last_day_change_pct: float = 8.0,
+    min_last_day_change_pct: float = -4.0,
     sort_by: str = "priority",
 ) -> pd.DataFrame:
     universe = _load_universe(universe_size)
@@ -364,6 +385,8 @@ def run_screen(
                 retail_crowded_share,
                 min_foreign_last_share,
                 min_foreign_vs_retail,
+                max_last_day_change_pct,
+                min_last_day_change_pct,
             ): r
             for _, r in universe.iterrows()
         }
@@ -430,8 +453,8 @@ def format_report(
         lines = [
             "순위 | 코드 | 시장 | 종목명 | "
             f"{flow_days}일 외국인(주) | {flow_days}일 기관(주) | 합계 | "
-            f"{flow_days}일종가% | 티어 | 외인양수일 | 동반양수일 | 막일외인 | 막일기관 | 집중도 | 개인위젯 | 뉴스(+/-) | 요약 제목",
-            "-" * 160,
+            f"{flow_days}일종가% | 막일% | 티어 | 외인양수일 | 동반양수일 | 막일외인 | 막일기관 | 집중도 | 개인위젯 | 뉴스(+/-) | 요약 제목",
+            "-" * 172,
         ]
     else:
         lines = [
@@ -450,10 +473,11 @@ def format_report(
             il = float(r.get("inst_last_day", 0.0))
             fc = float(r.get("foreign_concentration", 0.0))
             pt = str(r.get("priority_tier", "-"))[:1]
+            l1 = float(r.get("last_day_change_pct", 0.0))
             lines.append(
                 f"{rank:2} | {r['code']} | {_mkt_short(r['market']):<6} | {r['name'][:10]:<10} | "
                 f"{r['foreign_net']:>12,.0f} | {r['inst_net']:>12,.0f} | {r['flow_combined']:>12,.0f} | "
-                f"{rp:>8.1f}% | {pt:>3} | {fpd:>8} | {bpd:>8} | {fl:>10,.0f} | {il:>10,.0f} | {fc:>6.2f} | "
+                f"{rp:>8.1f}% | {l1:>6.1f} | {pt:>3} | {fpd:>8} | {bpd:>8} | {fl:>10,.0f} | {il:>10,.0f} | {fc:>6.2f} | "
                 f"{'Y' if r['in_retail_top_widget'] else ' '} | "
                 f"{r['news_pos']}/{r['news_neg']} | {t0}"
             )
@@ -478,6 +502,8 @@ def format_telegram_summary(
     min_both_positive_days: int = 2,
     min_foreign_momentum: float = 0.0,
     min_rise_pct: float = 0.0,
+    max_last_day_change_pct: float = 8.0,
+    min_last_day_change_pct: float = -4.0,
     score_floor: Optional[float] = None,
 ) -> str:
     """모바일용 짧은 요약 (투자 권유 아님 안내 포함)."""
@@ -494,7 +520,8 @@ def format_telegram_summary(
     mode = (
         f"누적매집: 외·기 동반순매수, 막일외인+, 외인양수≥{min_foreign_positive_days}일/{flow_days}일, "
         f"동반양수≥{min_both_positive_days}일, 모멘텀≥{min_foreign_momentum:,.0f}, "
-        f"막일기관+, 종가 {min_rise_pct:+.1f}~{max_rise_pct:.1f}%, "
+        f"막일등락 {min_last_day_change_pct:+.1f}~{max_last_day_change_pct:+.1f}%, "
+        f"막일기관은 가산/감점(필수아님), 종가구간 {min_rise_pct:+.1f}~{max_rise_pct:.1f}%, "
         f"집중도>{max_foreign_concentration:.0%}·양수일<4 제외, 개인위젯 제외, 정렬=우선순위{score_note}"
         if accumulation
         else f"{flow_days}일 외인+기관 순매수 합 상위, 정렬=우선순위{score_note}"
@@ -517,7 +544,8 @@ def format_telegram_summary(
             fpd = int(r.get("foreign_positive_days", 0))
             fc = float(r.get("foreign_concentration", 0.0))
             fm = float(r.get("foreign_momentum", 0.0)) / 10_000.0
-            fq_note = f" 외인양수{fpd}일 집중{fc:.2f} 모멘텀{fm:+,.0f}만"
+            l1 = float(r.get("last_day_change_pct", 0.0))
+            fq_note = f" 외인양수{fpd}일 집중{fc:.2f} 모멘텀{fm:+,.0f}만 막일{l1:+.1f}%"
             if bool(r.get("supply_handoff", False)):
                 fq_note += " 수급전환"
             idt = str(r.get("investor_last_date") or "").strip()

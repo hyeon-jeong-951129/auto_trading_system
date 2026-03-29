@@ -142,6 +142,18 @@ def main() -> None:
         help="--accumulation 일 때 군중 매수 구간 예외: 막일 외인순매수 ≥ 개인순매수×이 비율 (기본 0.35)",
     )
     p.add_argument(
+        "--max-last-day-change",
+        type=float,
+        default=8.0,
+        help="--accumulation 일 때 막일 종가 등락률(%%) 상한, 초과 시 제외(추격·과열, 기본 8)",
+    )
+    p.add_argument(
+        "--min-last-day-change",
+        type=float,
+        default=-4.0,
+        help="--accumulation 일 때 막일 종가 등락률(%%) 하한, 미만 시 제외(급락 약세, 기본 -4)",
+    )
+    p.add_argument(
         "--min-score",
         type=float,
         default=None,
@@ -169,6 +181,8 @@ def main() -> None:
         p.error("--min-foreign-last-share 는 0~1 사이여야 합니다.")
     if args.min_foreign_vs_retail < 0.0:
         p.error("--min-foreign-vs-retail 은 0 이상이어야 합니다.")
+    if args.min_last_day_change >= args.max_last_day_change:
+        p.error("--min-last-day-change 는 --max-last-day-change 보다 작아야 합니다.")
 
     telegram_test = args.telegram_test or args.test
 
@@ -210,6 +224,8 @@ def main() -> None:
         retail_crowded_share=args.retail_crowded_share,
         min_foreign_last_share=args.min_foreign_last_share,
         min_foreign_vs_retail=args.min_foreign_vs_retail,
+        max_last_day_change_pct=args.max_last_day_change,
+        min_last_day_change_pct=args.min_last_day_change,
         sort_by=args.sort_by,
     )
     if args.csv and not df.empty:
@@ -245,6 +261,8 @@ def main() -> None:
             min_both_positive_days=args.min_both_positive_days,
             min_foreign_momentum=args.min_foreign_momentum,
             min_rise_pct=args.min_rise_pct,
+            max_last_day_change_pct=args.max_last_day_change,
+            min_last_day_change_pct=args.min_last_day_change,
             score_floor=score_floor,
         )
         send_telegram_chunks(msg, token, chat_id)
