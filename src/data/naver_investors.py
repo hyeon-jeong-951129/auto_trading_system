@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from io import StringIO
-from typing import Optional
+from typing import Any, Dict, Optional
 
 import pandas as pd
 import requests
@@ -87,6 +87,43 @@ def sum_flow(df: pd.DataFrame, days: int) -> tuple[float, float]:
     inst = float(tail["기관순매매"].sum())
     frgn = float(tail["외국인순매매"].sum())
     return inst, frgn
+
+
+def flow_quality_metrics(df: pd.DataFrame, days: int) -> Dict[str, Any]:
+    """
+    최근 `days`일 구간 수급 질적 지표.
+    - 외국인 순매수 양수인 날 수, 막 거래일 외국인/기관 순매수
+    - 후반(최근 2일) vs 전반(그 앞 3일) 외국인 순매수 차이(모멘텀)
+    - 일별 외국인 순매수 절댓값 기준 '한두 날 몰림' 정도(concentration)
+    """
+    tail = df.tail(days)
+    f = tail["외국인순매매"].astype(float).values
+    ins = tail["기관순매매"].astype(float).values
+    n = len(f)
+    foreign_pos_days = int((f > 0).sum())
+    inst_pos_days = int((ins > 0).sum())
+    both_pos_days = int(((f > 0) & (ins > 0)).sum())
+    foreign_last = float(f[-1]) if n else 0.0
+    inst_last = float(ins[-1]) if n else 0.0
+    abs_f = [abs(x) for x in f]
+    total_abs = sum(abs_f)
+    concentration = (max(abs_f) / total_abs) if total_abs > 0 else 0.0
+
+    momentum = 0.0
+    if n >= 5:
+        last2 = float(f[-2] + f[-1])
+        prev3 = float(f[-5] + f[-4] + f[-3])
+        momentum = last2 - prev3
+
+    return {
+        "foreign_positive_days": foreign_pos_days,
+        "inst_positive_days": inst_pos_days,
+        "both_positive_days": both_pos_days,
+        "foreign_last_day": foreign_last,
+        "inst_last_day": inst_last,
+        "foreign_momentum": momentum,
+        "foreign_concentration": float(concentration),
+    }
 
 
 def close_window_pct(df: pd.DataFrame, days: int) -> float:

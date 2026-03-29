@@ -12,7 +12,12 @@ ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.recommend import format_report, format_telegram_summary, run_screen
+from src.recommend import (
+    filter_for_telegram_by_score,
+    format_report,
+    format_telegram_summary,
+    run_screen,
+)
 
 
 def _load_dotenv() -> None:
@@ -88,7 +93,58 @@ def main() -> None:
         default=14.0,
         help="--accumulation 일 때 최근 flow-days 구간 종가 등락률(%%) 상한 (기본 14)",
     )
+    p.add_argument(
+        "--min-foreign-pos-days",
+        type=int,
+        default=3,
+        help="--accumulation 일 때 최근 flow-days 중 외국인 순매수 양수인 날 최소 횟수 (기본 3)",
+    )
+    p.add_argument(
+        "--max-foreign-concentration",
+        type=float,
+        default=0.82,
+        help="--accumulation 일 때 외국인 일별 |순매수| 비중 상한(스파이크 필터, 기본 0.82)",
+    )
+    p.add_argument(
+        "--min-both-positive-days",
+        type=int,
+        default=2,
+        help="--accumulation 일 때 외국인·기관 동반 순매수(양수) 일 최소 횟수 (기본 2)",
+    )
+    p.add_argument(
+        "--min-foreign-momentum",
+        type=float,
+        default=0.0,
+        help="--accumulation 일 때 외인 모멘텀(최근2일 합 - 전반3일 합) 하한(주 단위, 기본 0)",
+    )
+    p.add_argument(
+        "--min-rise-pct",
+        type=float,
+        default=0.0,
+        help="--accumulation 일 때 최근 flow-days 종가 등락률 하한(% , 기본 0)",
+    )
+    p.add_argument(
+        "--min-score",
+        type=float,
+        default=None,
+        help="--telegram 일 때만: 우선순위점수(priority_score) 절대 하한. 미지정이면 절대 컷 없음",
+    )
+    p.add_argument(
+        "--min-score-ratio",
+        type=float,
+        default=None,
+        help="--telegram 일 때만: 당일 결과 중 최고 우선순위점수(priority_score) 대비 비율(0~1). 예: 0.45면 1위 대비 45%% 미만 제외",
+    )
+    p.add_argument(
+        "--sort-by",
+        choices=("priority", "score"),
+        default="priority",
+        help="결과 정렬: priority=자동매매 우선순위점수(기본), score=내부 raw score",
+    )
     args = p.parse_args()
+
+    if args.min_score_ratio is not None and not (0 < args.min_score_ratio <= 1):
+        p.error("--min-score-ratio 는 0 초과 1 이하여야 합니다.")
 
     telegram_test = args.telegram_test or args.test
 
@@ -122,6 +178,12 @@ def main() -> None:
         fetch_news=not args.no_news,
         accumulation=args.accumulation,
         max_rise_pct=args.max_rise,
+        min_foreign_positive_days=args.min_foreign_pos_days,
+        max_foreign_concentration=args.max_foreign_concentration,
+        min_both_positive_days=args.min_both_positive_days,
+        min_foreign_momentum=args.min_foreign_momentum,
+        min_rise_pct=args.min_rise_pct,
+        sort_by=args.sort_by,
     )
     if args.csv and not df.empty:
         # 리스트 컬럼은 CSV에 깨질 수 있어 제외
@@ -140,18 +202,29 @@ def main() -> None:
             sys.exit(1)
         from src.notify.telegram import send_telegram_chunks
 
-        msg = format_telegram_summary(
+        df_tg, score_floor = filter_for_telegram_by_score(
             df,
+            min_score=args.min_score,
+            min_score_ratio=args.min_score_ratio,
+        )
+        msg = format_telegram_summary(
+            df_tg,
             head=args.top,
             flow_days=args.flow_days,
             accumulation=args.accumulation,
             max_rise_pct=args.max_rise,
+            min_foreign_positive_days=args.min_foreign_pos_days,
+            max_foreign_concentration=args.max_foreign_concentration,
+            min_both_positive_days=args.min_both_positive_days,
+            min_foreign_momentum=args.min_foreign_momentum,
+            min_rise_pct=args.min_rise_pct,
+            score_floor=score_floor,
         )
         send_telegram_chunks(msg, token, chat_id)
         print("Telegram 전송 완료", file=sys.stderr)
         print(msg)
     else:
-        print(format_report(df, head=args.top, flow_days=args.flow_days))
+        print(format_report(df, head=args.top, flow_days=args.flow_days, accumulation=args.accumulation))
 
 
 if __name__ == "__main__":
